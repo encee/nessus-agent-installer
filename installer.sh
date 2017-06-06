@@ -26,7 +26,7 @@ getHostInfo(){
     echo "Host is $OS - $OS_VER"
 }
 
-downloadClient(){
+downloadAgent(){
     filePrefix="NessusAgent-6.10.7"
     fileDelim="."
     if [ ! -z $OS ] && [ ! -z $OS_VER ]; then
@@ -102,7 +102,7 @@ downloadClient(){
     wget -O $fileSuffix $fullCon
 }
 
-installClient(){
+installAgent(){
     echo "Installing file - $fileSuffix"
     case $fileExt in
         "rpm" )
@@ -128,10 +128,56 @@ installClient(){
     eval "$install_command $fileSuffix"
 }
 
-main(){
-  getHostInfo
-  downloadClient
-  installClient
+connectAgent(){
+    /opt/nessus_agent/sbin/nessuscli agent link \
+        --key=${license} \
+        --name=${agentName:-$(hostname)} \
+        --groups=${groups:-"All"} \
+        --host=${host} \
+        --port=${port:-8834}
 }
 
-main
+usage(){
+    echo "Usage: $0"
+    echo ""
+    echo "-a   : agent name (Optional)"
+    echo "-g   : groups for agent to join (Optional)"
+    echo "-h   : host to connect to (Required)"
+    echo "-l   : license key (Required)"
+    echo "-p   : port (Optional)"
+}
+
+validate(){
+  local errors=()
+  [ -z "$host" ]    && errors=( "${errors[@]}" "host option is required." )
+  [ -z "$license" ] && errors=( "${errors[@]}" "license option is required." )
+  [ $EUID -ne 0 ]   && errors=( "${errors[@]}" "must be ran as root." )
+
+  local size=${#errors[*]}
+
+  if [ ${#errors[@]} -gt 0 ]; then
+      for (( i=0; i<$size; i++ )); do
+        echo "config error: ${errors[$i]}"
+      done
+      exit 1
+  fi
+}
+main(){
+  while getopts ":a:g:h:l:p:" o; do
+    case "${o}" in
+        a) agentName=${OPTARG};;
+        g) groups=${OPTARG};;
+        h) host=${OPTARG};;
+        l) license=${OPTARG};;
+        p) port=${OPTARG};;
+        *) usage;;
+    esac
+  done
+  shift $((OPTIND-1))
+  validate
+  getHostInfo
+  downloadAgent
+  installAgent
+}
+
+main "$@"
